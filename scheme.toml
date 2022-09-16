@@ -1,0 +1,17 @@
+name = "Kpn_complex"
+scheme = 18
+url = "https://bigsdb.pasteur.fr/api/db/pubmlst_klebsiella_seqdef"
+source = "Pasteur Insitute"
+
+levels = [
+  {name = "species", threshold = 610},
+  {name = "subspecies", threshold = 585},
+  {name = "sublineage", threshold = 190},
+  {name = "clonalGroup", threshold = 43},
+  {name = "5", threshold = 10},
+  {name = "6", threshold = 7},
+  {name = "7", threshold = 4},
+  {name = "8", threshold = 2},
+  {name = "9", threshold = 1},
+  {name = "10", threshold = 0},
+]
