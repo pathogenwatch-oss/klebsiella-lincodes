@@ -101,9 +101,10 @@ def classify_profile():
         results['LINcode'] = best_matches[0]['LINcode']
         results['Clonal Group'] = best_matches[0]['Clonal Group']
         results['Sublineage'] = best_matches[0]['Sublineage']
+        results['cgST'] = input_json['st']
     else:
         lincode = []
-        for i in range(0, 9):
+        for i in range(10):
             level = scheme['levels'][i]
             code = ""
             if mismatches <= level['threshold']:
@@ -114,10 +115,14 @@ def classify_profile():
                         break
             lincode.append(code)
         results['LINcode'] = lincode
-        if lincode[2] != '' and lincode[2] != '?':
+        if lincode[2] != '' and lincode[2] != '*':
             results['Clonal Group'] = best_matches[0]['Clonal Group']
-        if lincode[3] != '' and lincode[2] != '?':
+        if lincode[3] != '' and lincode[2] != '*':
             results['Sublineage'] = best_matches[0]['Sublineage']
+        if lincode[9] != '' and lincode[9] != '*':
+            results['cgST'] = best_matches[0]['st']
+        else:
+            results['cgST'] = input_json['st']
     print(json.dumps(results), file=sys.stdout)
 
 
