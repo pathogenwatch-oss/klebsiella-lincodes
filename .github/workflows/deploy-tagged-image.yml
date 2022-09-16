@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - '*'
+
 jobs:
 
   build:
@@ -13,11 +14,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set env
-      env:
-        token: ${{ secrets.GITLAB_ACCESS_TOKEN }}
       run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
     - name: Log in to registry
-      run: docker login -u cgps.admin -p ${token}
+      env:
+        token: ${{ secrets.GITLAB_ACCESS_TOKEN }}
+      run: docker login -u cgps-admin -p ${token} registry.gitlab.com
     - name: Build the Docker image
       run: docker build . --tag registry.gitlab.com/cgps/pathogenwatch/analyses/klebsiella-lincodes:${RELEASE_VERSION}
     - name: Push the Docker image 
