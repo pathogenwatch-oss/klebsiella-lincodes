@@ -14,7 +14,7 @@ jobs:
       - name: git-sync
         uses: wei/git-sync@v3
         with:
-          source_repo: "https://cgps-admin:${{ secrets.GIT_PUSH_TOKEN }}@github.com/pathogenwatch/xxx.git"
+          source_repo: "https://cgps-admin:${{ secrets.GIT_PUSH_TOKEN }}@github.com/pathogenwatch/klebsiella-lincodes.git"
           source_branch: "main"
-          destination_repo: "https://cgps-admin:${{ secrets.GIT_PUSH_TOKEN }}@github.com/pathogenwatch-oss/xxx.git"
+          destination_repo: "https://cgps-admin:${{ secrets.GIT_PUSH_TOKEN }}@github.com/pathogenwatch-oss/klebsiella-lincodes.git"
           destination_branch: "main"
