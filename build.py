@@ -41,7 +41,7 @@ def parse_profile_csv(profile_csv: str) -> Dict:
         lincode, phylogroup, sublineage, clonal_group = row[-4:]
         if lincode != '':
             profiles[st] = {'ST': st, 'profile': profile, 'LINcode': lincode, 'Phylogroup': phylogroup,
-                            'Clonal Group': clonal_group, 'Sublineage': sublineage}
+                            'Clonal Group': clonal_group.replace('CG', ''), 'Sublineage': sublineage.replace('SL', '')}
     return profiles
 
 

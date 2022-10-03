@@ -96,13 +96,19 @@ def classify_profile():
         'matches': [{'st': match['st'], 'LINcode': match['LINcode']} for match in best_matches],
         'schemeSize': scheme_size,
         'mismatches': mismatches,
-        'comparedLoci': best_matches[0]['compared_loci']}
+        'comparedLoci': best_matches[0]['compared_loci'],
+        'cgST': input_json['st'],
+        'Closest cgST': '',
+        'LINcode': '',
+        'Clonal Group': '',
+        'Sublineage': ''
+    }
     if input_json['st'].isdigit():
         results['LINcode'] = best_matches[0]['LINcode']
         results['Clonal Group'] = best_matches[0]['Clonal Group']
         results['Sublineage'] = best_matches[0]['Sublineage']
-        results['cgST'] = input_json['st']
-    else:
+        results['Closest cgST'] = input_json['st']
+    elif 0 < len(best_matches):
         lincode = []
         for i in range(10):
             level = scheme['levels'][i]
@@ -119,10 +125,11 @@ def classify_profile():
             results['Clonal Group'] = best_matches[0]['Clonal Group']
         if lincode[3] != '' and lincode[2] != '*':
             results['Sublineage'] = best_matches[0]['Sublineage']
-        if lincode[9] != '' and lincode[9] != '*':
+        if mismatches == 0:
             results['cgST'] = best_matches[0]['st']
+            results['Closest cgST'] = best_matches[0]['st']
         else:
-            results['cgST'] = input_json['st']
+            results['Closest cgST'] = '/'.join(sorted([match['st'] for match in best_matches]))
     print(json.dumps(results), file=sys.stdout)
 
 
