@@ -135,7 +135,7 @@ def classify_profile():
         match = best_matches[0]
         print(json.dumps(build_result(st, closest_cgst=st, matches=best_matches, identity=100, identical=0,
                                       compared_loci=match['compared_loci'], lincode=match['LINcode'],
-                                      sublineage=match['Sublineage'], clonal_group=match['Clonal group'])))
+                                      sublineage=match['Sublineage'], clonal_group=match['Clonal Group'])))
     else:
         identity = best_matches[0]['identity']
         lincode_bin = assign_bin(identity, scheme['levels'])
