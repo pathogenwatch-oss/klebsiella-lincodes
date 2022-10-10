@@ -4,14 +4,14 @@ url = "https://bigsdb.pasteur.fr/api/db/pubmlst_klebsiella_seqdef"
 source = "Pasteur Insitute"
 
 levels = [
-  {name = "species", threshold = 610},
-  {name = "subspecies", threshold = 585},
-  {name = "sublineage", threshold = 190},
-  {name = "clonalGroup", threshold = 43},
-  {name = "5", threshold = 10},
-  {name = "6", threshold = 7},
-  {name = "7", threshold = 4},
-  {name = "8", threshold = 2},
-  {name = "9", threshold = 1},
-  {name = "10", threshold = 0},
+  {name = "species", min = 0, max = 3.0207},
+  {name = "subspecies", min = 3.0207, max = 6.9952},
+  {name = "sublineage", min = 6.9952, max = 69.7933},
+  {name = "clonalGroup", min = 69.7933, max = 93.1638},
+  {name = "5", min = 93.1638, max = 98.4102},
+  {name = "6", min = 98.4102, max = 798.8871},
+  {name = "7", min = 98.8871, max = 99.3461},
+  {name = "8", min = 99.3461, max = 99.6820},
+  {name = "9", min = 99.6820, max = 99.8410},
+  {name = "10", min = 99.8410, max = 100},
 ]
