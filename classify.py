@@ -101,8 +101,9 @@ def get_exact_match(st, profiles):
 def assign_bin(identity, levels):
     for i in range(len(levels)):
         level = 9 - i
-        if levels[level]['min'] < identity:
+        if identity >= levels[level]['max']:
             return level
+    return -1
 
 
 def build_result(cgst, matches=[], identical=0, compared_loci=SCHEME_SIZE, identity=0, closest_cgst='',
