@@ -1,4 +1,6 @@
 import csv
+import subprocess
+
 import toml
 import json
 import re
@@ -25,11 +27,17 @@ def extract_name(url: str):
 
 @retry(backoff=2, delay=1, max_delay=1200)
 def fetch_profile_csv(url: str) -> str:
-    r = requests.get(url)
-    if r.status_code != 200:
-        print(f"Failed to retrieve url: {url} {r.status_code} - {r.text}")
+    p = subprocess.Popen(['curl', url], stdout=subprocess.PIPE)
+    out, err = p.communicate()
+    if p.returncode!= 0:
         raise IOError
-    return r.text
+    return out.decode("utf-8")
+
+    # r = requests.get(url)
+    # if r.status_code != 200:
+    #     print(f"Failed to retrieve url: {url} {r.status_code} - {r.text}")
+    #     raise IOError
+    # return r.text
 
 
 def parse_profile_csv(profile_csv: str) -> Dict:
