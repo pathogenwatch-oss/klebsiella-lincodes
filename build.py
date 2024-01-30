@@ -5,7 +5,7 @@ import toml
 import json
 import re
 import sys
-from typing import Dict, List
+from typing import Dict
 
 import requests as requests
 from retry import retry

@@ -1,9 +1,9 @@
 import json
-import math
-
-import toml
 import sys
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
+
+import math
+import toml
 
 SCHEME_SIZE = 629
 
@@ -44,11 +44,15 @@ def build_match(st: str, identical: int, identity: float, skipped_loci: int, pro
     }
 
 
-def compare_profiles(query: List[str], reference: List[str], gathering_threshold, max_missing_loci=29) -> Tuple[
-    bool, int, int]:
+def compare_profiles(
+        query: List[str],
+        reference: List[str],
+        gathering_threshold,
+        max_missing_loci=29
+) -> Tuple[bool, int, int]:
+
     identical = 0
     mismatches = 0
-    matched = True
     skipped_loci = 0
     for i in range(SCHEME_SIZE):
         # Skip positions that are blank. The match quality is shown by the number of compared loci.
@@ -62,7 +66,6 @@ def compare_profiles(query: List[str], reference: List[str], gathering_threshold
         else:
             mismatches += 1
             if mismatches > gathering_threshold:
-                matched = False
                 return False, 0, 0,
     return True, identical, skipped_loci
 
@@ -75,7 +78,7 @@ def closest_profiles(code: str, profiles: Dict) -> List[Dict[str, Any]]:
     query_profile = code.split('_')
     for st in profiles.keys():
         matched, identical, skipped_loci = compare_profiles(query_profile, profiles[st]['profile'],
-                                                             current_gathering_threshold)
+                                                            current_gathering_threshold)
         if not matched:
             continue
         identity = calculate_identity(identical, skipped_loci)
@@ -94,7 +97,7 @@ def closest_profiles(code: str, profiles: Dict) -> List[Dict[str, Any]]:
 
 
 def get_exact_match(st, profiles):
-    profile = profiles[st]
+    profiles[st]
     return [build_match(st, 0, 100, 0, profiles[st])]
 
 
@@ -142,7 +145,7 @@ def classify_profile():
         lincode_bin = assign_bin(identity, scheme['levels'])
         lincode = ['*'] * 10
         for i in range(lincode_bin + 1):
-            level = scheme['levels'][i]
+            scheme['levels'][i]
             lincode[i] = best_matches[0]['LINcode'][i]
         print(json.dumps(
             build_result(
