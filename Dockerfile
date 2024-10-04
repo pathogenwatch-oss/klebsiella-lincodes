@@ -1,6 +1,6 @@
-FROM python:3.10 AS builder
+FROM python:3.11 AS builder
 
-RUN pip install requests retry toml
+RUN pip --disable-pip-version-check --no-cache-dir install requests toml tenacity
 
 COPY scheme.toml /scheme.toml
 
@@ -8,7 +8,7 @@ COPY build.py /build.py
 
 RUN python3 /build.py
 
-FROM python:3.10-alpine
+FROM python:3.11-alpine
 
 RUN pip install toml
 
