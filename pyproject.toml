@@ -1,0 +1,22 @@
+[project]
+name = "plincer"
+version = "5.0.1"
+description = "plincer - Pathogenwatch LIN code assignment tool."
+readme = "README.md"
+authors = [
+    { name = "Corin Yeats", email = "corin.yeats@cgps.group" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.32.3",
+    "tenacity>=9.1.2",
+    "toml>=0.10.2",
+    "typer>=0.15.2",
+]
+
+[project.scripts]
+plincer = "plincer.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

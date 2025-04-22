@@ -3,12 +3,15 @@ import json
 import re
 import subprocess
 import sys
-from typing import Any, Dict
+from pathlib import Path
+from typing import Annotated, Any
 
 import requests as requests
 import toml
+import typer
 from tenacity import retry, wait_exponential
 
+app = typer.Typer()
 
 @retry(wait=wait_exponential(multiplier=1, min=10, max=7200))
 def fetch_json(url: str) -> dict[str, Any]:
@@ -70,16 +73,32 @@ def read_scheme(filepath: str) -> dict[str, Any]:
         lines = sch_fh.readlines()
     return parse_profile_csv("\n".join(lines))
 
-
-def build_scheme():
-    with open('scheme.toml', 'r') as sch_fh, open('profiles.json', 'w') as out_f:
+@app.command()
+def build(
+        scheme_toml: Annotated[
+            Path,
+            typer.Option(
+                "-s",
+                "--scheme-file",
+                help="Input scheme TOML file path",
+                file_okay=True,
+                exists=True,
+                dir_okay=False,
+            ),
+        ] = Path("scheme.toml"),
+        profiles_json: Annotated[
+            Path,
+            typer.Option(
+                "-o",
+                "--profiles-file",
+                help="Output Profiles JSON file path",
+                file_okay=True,
+                dir_okay=False,
+            ),
+        ] = Path("profiles.json"),
+):
+    with open(scheme_toml, "r") as sch_fh, open(profiles_json, "w") as out_f:
         scheme = toml.load(sch_fh)
         print(f"Fetching scheme {scheme['name']}", file=sys.stderr)
-        profiles: dict[str, dict[str, Any]] = download_scheme(scheme)
-        # profiles = read_scheme("BIGSdb_cgMLST_profiles_40000_49378.txt")
-        converted: dict[str, dict[str, Any]] = convert_lincodes(profiles)
-        print(json.dumps(converted), file=out_f)
+        print(json.dumps(convert_lincodes(download_scheme(scheme))), file=out_f)
 
-
-if __name__ == '__main__':
-    build_scheme()

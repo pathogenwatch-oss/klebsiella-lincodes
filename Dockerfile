@@ -1,21 +1,22 @@
-FROM python:3.11 AS builder
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim AS base
 
-RUN pip --disable-pip-version-check --no-cache-dir install requests toml tenacity
+COPY src uv.lock pyproject.toml LICENSE README.md scheme.toml /plincer/
 
-COPY scheme.toml /scheme.toml
+WORKDIR /plincer
 
-COPY build.py /build.py
+RUN uv build --wheel && mkdir /build && mv LICENSE README.md scheme.toml dist/*.whl /build/
 
-RUN python3 /build.py
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim AS prod
 
-FROM python:3.11-alpine
+ARG VERSION
+ENV VERSION=${VERSION}
 
-RUN pip install toml
+COPY --from=base /build /plincer
 
-COPY --from=builder /profiles.json /profiles.json
+WORKDIR /plincer
 
-COPY scheme.toml /scheme.toml
+RUN uv pip install --system plincer-"${VERSION}"-py3-none-any.whl
 
-COPY classify.py /classify.py
+RUN plincer build
 
-ENTRYPOINT ["python3", "/classify.py"]
+ENTRYPOINT ["plincer", "classify"]

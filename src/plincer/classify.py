@@ -1,12 +1,14 @@
 import json
 import sys
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Annotated, Any, Dict, List, Tuple
 
 import math
 import toml
+import typer
 
 SCHEME_SIZE = 629
-
+app = typer.Typer()
 
 def get_profiles(scheme_name: str) -> Dict[str, Any]:
     with open(f'{scheme_name}.json', 'r') as scheme_fh:
@@ -97,7 +99,6 @@ def closest_profiles(code: str, profiles: Dict) -> List[Dict[str, Any]]:
 
 
 def get_exact_match(st, profiles):
-    profiles[st]
     return [build_match(st, 0, 100, 0, profiles[st])]
 
 
@@ -123,43 +124,82 @@ def build_result(cgst, matches=[], identical=0, compared_loci=SCHEME_SIZE, ident
         'Sublineage': sublineage
     }
 
-
-def classify_profile():
+@app.command()
+def classify_profile(
+        scheme_toml: Annotated[
+            Path,
+            typer.Option(
+                "-S",
+                "--scheme-file",
+                help="Scheme TOML file path",
+                file_okay=True,
+                exists=True,
+                dir_okay=False,
+            ),
+        ] = Path("scheme.toml"),
+        profiles_json: Annotated[
+            Path,
+            typer.Option(
+                "-P",
+                "--profiles-file",
+                help="Profiles JSON file path",
+                file_okay=True,
+                exists=True,
+                dir_okay=False,
+            ),
+        ] = Path("profiles.json"),
+):
     input_json = read_input()
-    st = input_json['st']
-    with open('profiles.json', 'r') as profiles_fh:
+    st = input_json["st"]
+    with open(profiles_json, "r") as profiles_fh:
         profiles = json.load(profiles_fh)
-    with open('scheme.toml', 'r') as scheme_fh:
+    with open(scheme_toml, "r") as scheme_fh:
         scheme = toml.load(scheme_fh)
-    best_matches = get_exact_match(input_json['st'], profiles) if input_json['st'].isdigit() else \
-        closest_profiles(input_json['code'], profiles)
+    best_matches = (
+        get_exact_match(input_json["st"], profiles)
+        if input_json["st"].isdigit()
+        else closest_profiles(input_json["code"], profiles)
+    )
     if len(best_matches) == 0:
-        print(json.dumps(build_result(input_json['st'])))
-    elif input_json['st'].isdigit():
+        print(json.dumps(build_result(input_json["st"])))
+    elif input_json["st"].isdigit():
         match = best_matches[0]
-        print(json.dumps(build_result(st, closest_cgst=st, matches=best_matches, identity=100, identical=0,
-                                      compared_loci=match['compared_loci'], lincode=match['LINcode'],
-                                      sublineage=match['Sublineage'], clonal_group=match['Clonal Group'])))
+        print(
+            json.dumps(
+                build_result(
+                    st,
+                    closest_cgst=st,
+                    matches=best_matches,
+                    identity=100,
+                    identical=0,
+                    compared_loci=match["compared_loci"],
+                    lincode=match["LINcode"],
+                    sublineage=match["Sublineage"],
+                    clonal_group=match["Clonal Group"],
+                )
+            )
+        )
     else:
-        identity = best_matches[0]['identity']
-        lincode_bin = assign_bin(identity, scheme['levels'])
-        lincode = ['*'] * 10
+        identity = best_matches[0]["identity"]
+        lincode_bin = assign_bin(identity, scheme["levels"])
+        lincode = ["*"] * 10
         for i in range(lincode_bin + 1):
-            scheme['levels'][i]
-            lincode[i] = best_matches[0]['LINcode'][i]
-        print(json.dumps(
-            build_result(
-                best_matches[0]['st'] if 9 == lincode_bin else st,
-                best_matches,
-                best_matches[0]['identical'],
-                best_matches[0]['compared_loci'],
-                best_matches[0]['identity'],
-                '/'.join(sorted([match['st'] for match in best_matches])),
-                lincode,
-                best_matches[0]['Clonal Group'] if 2 < lincode_bin else '',
-                best_matches[0]['Sublineage'] if 1 < lincode_bin else ''
-            )), file=sys.stdout)
+            lincode[i] = best_matches[0]["LINcode"][i]
+        print(
+            json.dumps(
+                build_result(
+                    best_matches[0]["st"] if 9 == lincode_bin else st,
+                    best_matches,
+                    best_matches[0]["identical"],
+                    best_matches[0]["compared_loci"],
+                    best_matches[0]["identity"],
+                    "/".join(sorted([match["st"] for match in best_matches])),
+                    lincode,
+                    best_matches[0]["Clonal Group"] if 2 < lincode_bin else "",
+                    best_matches[0]["Sublineage"] if 1 < lincode_bin else "",
+                )
+            ),
+            file=sys.stdout,
+        )
 
 
-if __name__ == '__main__':
-    classify_profile()
