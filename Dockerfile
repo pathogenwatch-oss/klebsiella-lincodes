@@ -9,9 +9,11 @@ RUN uv build --wheel && mkdir /build && mv LICENSE README.md scheme.toml host_co
 FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim AS prod
 
 ARG VERSION
-ARG LOG=DEBUG
 ENV VERSION=${VERSION}
+ARG LOG=DEBUG
 ENV LOG=${LOG}
+ARG BUILD_DATE
+LABEL build_data=$BUILD_DATE
 
 COPY --from=base /build /plincer
 

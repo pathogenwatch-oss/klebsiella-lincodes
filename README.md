@@ -17,16 +17,18 @@ a file called `secrets.json`. The format is detailed [below](#secretsjson).
 #### Building
 
 Make a directory called `cache_dir` in the repository and then run the docker command below. This will pull a fresh copy
-of the database from the Pasteur.
+of the database from the Pasteur. Note that the BUILD_DATE build argument is used to force Docker to rebuild the
+database if the date has changed. Any string could be used and a random string will force a full rebuild.
 
 ```
 %> docker build --progress plain \
-             --build-arg VERSION=5.0.2 \
-             --build-arg LOG=INFO \
-             --secret id=secrets,src="$PWD/secrets.json" \
-             --cache-from type=local,src=cache_dir \
-             --cache-to type=local,dest=cache_dir \
-             -t registry.gitlab.com/cgps/pathogenwatch/analyses/plincer:v5.0.2 .
+                --build-arg BUILD_DATE=$(date +%Y-%m-%d) \
+                --build-arg VERSION=5.0.2 \
+                --build-arg LOG=INFO \
+                --secret id=secrets,src="$PWD/secrets.json" \
+                --cache-from type=local,src=cache_dir \
+                --cache-to type=local,dest=cache_dir \
+                -t registry.gitlab.com/cgps/pathogenwatch/analyses/plincer:v5.0.2 .
 ```
 
 #### Running
