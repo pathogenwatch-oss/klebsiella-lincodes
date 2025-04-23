@@ -125,7 +125,7 @@ def build_result(cgst, matches=[], identical=0, compared_loci=SCHEME_SIZE, ident
     }
 
 @app.command()
-def classify_profile(
+def classify(
         scheme_toml: Annotated[
             Path,
             typer.Option(

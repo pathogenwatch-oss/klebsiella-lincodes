@@ -1,7 +1,8 @@
 name = "Kpn_complex"
-scheme = 18
-url = "https://bigsdb.pasteur.fr/api/db/pubmlst_klebsiella_seqdef"
+scheme_id = 18
 source = "Pasteur Insitute"
+host_path = "pubmlst_klebsiella_seqdef"
+host = "pasteur"
 
 levels = [
   {name = "species", min = 0, max = 3.0207},
