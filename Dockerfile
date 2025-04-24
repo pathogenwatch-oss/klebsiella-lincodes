@@ -29,4 +29,4 @@ RUN --mount=type=secret,id=secrets \
     --secrets-cache-file /cache/secrets_cache.json \
     -l ${LOG}
 
-ENTRYPOINT ["plincer", "classify"]
+ENTRYPOINT ["plincer", "classify", "-"]
