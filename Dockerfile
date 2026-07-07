@@ -4,7 +4,7 @@ COPY src uv.lock pyproject.toml LICENSE README.md scheme.toml host_config.json /
 
 WORKDIR /plincer
 
-RUN uv build --wheel && mkdir /build && mv LICENSE README.md scheme.toml host_config.json dist/*.whl /build/
+RUN uv build --wheel && mkdir /build && mv LICENSE README.md scheme.toml host_config.json pyproject.toml uv.lock dist/*.whl /build/
 
 FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim AS prod
 
@@ -19,7 +19,10 @@ COPY --from=base /build /plincer
 
 WORKDIR /plincer
 
-RUN uv pip install --system plincer-"${VERSION}"-py3-none-any.whl
+RUN uv export --frozen --no-dev --format requirements-txt -o requirements.txt
+
+RUN uv pip install --system --requirement requirements.txt \
+    && uv pip install --system --no-deps plincer-"${VERSION}"-py3-none-any.whl
 
 RUN --mount=type=secret,id=secrets \
     --mount=type=cache,target=/cache \
