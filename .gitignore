@@ -212,4 +212,7 @@ dmypy.json
 cython_debug/
 
 /.idea/
-/secrets.json
+
+# Secrets
+secrets.json
+secrets_cache.json

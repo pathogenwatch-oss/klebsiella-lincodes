@@ -19,7 +19,7 @@ COPY --from=base /build /plincer
 
 WORKDIR /plincer
 
-RUN uv export --frozen --no-dev --format requirements-txt -o requirements.txt
+RUN uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt
 
 RUN uv pip install --system --requirement requirements.txt \
     && uv pip install --system --no-deps plincer-"${VERSION}"-py3-none-any.whl

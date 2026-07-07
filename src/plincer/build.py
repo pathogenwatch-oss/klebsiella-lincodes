@@ -334,7 +334,11 @@ def hash_alleles(
 
 
 def oauth_fetch(
-    host: str, keycache: KeyCache, database: str, url: str
+    host: str,
+    keycache: KeyCache,
+    database: str,
+    url: str,
+    retry: bool = True,
 ) -> requests.Response:
     logging.debug(f"Fetching data from authenticated {host} - {database}...")
     consumer_key: tuple[str, str] = keycache.get_consumer_key(host)
@@ -345,13 +349,13 @@ def oauth_fetch(
         access_token=session_key[0],
         access_token_secret=session_key[1],
     )
-    response: requests.Response = session.get(url)
-    if response.status_code == 301 or response.status_code == 401:
+    response: requests.Response = session.get(url, params={})
+    if (response.status_code == 301 or response.status_code == 401) and retry:
         logging.error(
             f"Session access denied. Attempting to regenerate keys as needed for {host}"
         )
-        keycache.delete_key("session", host)
-        response = oauth_fetch(host, keycache, database, url)
+        keycache.delete_key("session", host, database)
+        response = oauth_fetch(host, keycache, database, url, retry=False)
     else:
         response.raise_for_status()
     return response

@@ -57,7 +57,13 @@ class KeyCache:
         with open(self.cache_file, "w") as f:
             json.dump(self.__cache, f, indent=2)
 
-    def get_key(self, key_type: str, host: str) -> tuple[str, str] | None:
+    @staticmethod
+    def __cache_key(key_type: str, database: str | None = None) -> str:
+        return key_type if database is None else f"{database}:{key_type}"
+
+    def get_key(
+        self, key_type: str, host: str, database: str | None = None
+    ) -> tuple[str, str] | None:
         if not self.__is_bigsdb(host):
             return None
         if key_type in ["user", "consumer"]:
@@ -65,26 +71,38 @@ class KeyCache:
                 raise KeyError(f"{key_type.capitalize()} for {host} not found in secrets file")
             return self.__secrets[host][key_type]["TOKEN"], self.__secrets[host][key_type]["TOKEN SECRET"]
         else:
-            if host in self.__cache and key_type in self.__cache[host]:
-                return self.__cache[host][key_type]["TOKEN"], self.__cache[host][key_type]["TOKEN SECRET"]
+            cache_key = self.__cache_key(key_type, database)
+            if host in self.__cache and cache_key in self.__cache[host]:
+                return self.__cache[host][cache_key]["TOKEN"], self.__cache[host][cache_key]["TOKEN SECRET"]
             return None
 
-    def set_key(self, key_type: str, host: str, token: str, token_secret: str) -> None:
+    def set_key(
+        self,
+        key_type: str,
+        host: str,
+        token: str,
+        token_secret: str,
+        database: str | None = None,
+    ) -> None:
         if key_type in ["user", "consumer"]:
             logger.warning(f"Attempt to set {key_type} token for {host} ignored.")
             return
         if host not in self.__cache:
             self.__cache[host] = {}
-        self.__cache[host][key_type] = {"TOKEN": token, "TOKEN SECRET": token_secret}
+        cache_key = self.__cache_key(key_type, database)
+        self.__cache[host][cache_key] = {"TOKEN": token, "TOKEN SECRET": token_secret}
         self.save_cache()
 
-    def delete_key(self, key_type: str, host: str) -> None:
+    def delete_key(
+        self, key_type: str, host: str, database: str | None = None
+    ) -> None:
         if key_type in ["user", "consumer"]:
             logger.warning(f"Attempt to delete {key_type} token for {host} ignored.")
             return
         else:
-            if host in self.__cache and key_type in self.__cache[host]:
-                del self.__cache[host][key_type]
+            cache_key = self.__cache_key(key_type, database)
+            if host in self.__cache and cache_key in self.__cache[host]:
+                del self.__cache[host][cache_key]
                 self.save_cache()
 
     def get_user_credentials(self, host: str) -> tuple[str, str]:
@@ -94,27 +112,27 @@ class KeyCache:
         return self.get_key("consumer", host)
 
     def get_request_key(self, host: str, database: str) -> tuple[str, str] | None:
-        key = self.get_key("request", host)
+        key = self.get_key("request", host, database)
         if key is None:
             key = self.fetch_request_key(host, database)
             if key:
-                self.set_key("request", host, key[0], key[1])
+                self.set_key("request", host, key[0], key[1], database)
         return key
 
     def get_session_key(self, host: str, database: str) -> tuple[str, str] | None:
-        key = self.get_key("session", host)
+        key = self.get_key("session", host, database)
         if key is None:
             key = self.fetch_session_key(host, database)
             if key:
-                self.set_key("session", host, key[0], key[1])
+                self.set_key("session", host, key[0], key[1], database)
         return key
 
     def get_access_key(self, host: str, database: str) -> tuple[str, str] | None:
-        key = self.get_key("access", host)
+        key = self.get_key("access", host, database)
         if key is None:
             key = self.fetch_access_key(host, database)
             if key:
-                self.set_key("access", host, key[0], key[1])
+                self.set_key("access", host, key[0], key[1], database)
         return key
 
     def fetch_request_key(self, host: str, database: str) -> tuple[str, str]:
@@ -145,7 +163,9 @@ class KeyCache:
             logger.error(f"Error getting request token: {str(e)}")
             raise Exception(f"Error getting request token for {host}")
 
-    def fetch_session_key(self, host, database) -> tuple[str, str]:
+    def fetch_session_key(
+        self, host: str, database: str, retry: bool = True
+    ) -> tuple[str, str]:
         logger.debug(f"Fetching session key for {host}...")
         access_key = self.get_access_key(host, database)
         consumer_key = self.get_consumer_key(host)
@@ -156,20 +176,24 @@ class KeyCache:
             access_token_secret=access_key[1],
         )
         url = f"{self.__host_config[host]['REST_URL']}/pubmlst_{database}_seqdef/oauth/get_session_token"
-        r = session_request.get(url)
+        r = session_request.get(url, params={})
         if r.status_code == 200:
             session_token = r.json()["oauth_token"]
             session_secret = r.json()["oauth_token_secret"]
-        elif r.status_code == 301:
+        elif (r.status_code == 301 or r.status_code == 401) and retry:
             print(
                 f"Session access denied. Attempting to regenerate keys as needed for {host}"
             )
-            # Access key is out of date/revoked. Delete and re-run fetch_session_key
-            self.delete_key("access", host)
-            session_token, session_secret = self.fetch_session_key(host, database)
+            self.delete_key("access", host, database)
+            session_token, session_secret = self.fetch_session_key(
+                host, database, retry=False
+            )
         else:
             print(f"{r.status_code}: Failed to get session token for {host}: {r.text}")
-            raise Exception(f"Failed to get session token for {host}")
+            raise Exception(
+                f"Failed to get session token for {host} - {database}: "
+                f"{r.status_code}: {r.text}"
+            )
         return session_token, session_secret
 
     def fetch_access_key(self, host: str, database: str) -> tuple[str, str]:
@@ -178,25 +202,36 @@ class KeyCache:
         logger.debug(f"Fetching access key for {host}...")
         request_key: tuple[str, str] = self.get_request_key(host, database)
         consumer_key = self.get_consumer_key(host)
+        database_name = f"pubmlst_{database}_seqdef"
 
         """Automatically authorize the application."""
         logger.info(f"Authorising application for {host} - {database}...")
         session = self.__get_bigsdb_session(host)
         if not KeyCache.__logged_in(session, self.__host_config[host]['WEB_URL']):
             raise Exception(f"Failed to log in to {host}")
-        authorise_url = f"{self.__host_config[host]['WEB_URL']}?db=pubmlst_{database}_seqdef&page=authorizeClient&oauth_token={request_key[0]}"
+        authorise_url = f"{self.__host_config[host]['WEB_URL']}?db={database_name}&page=authorizeClient&oauth_token={request_key[0]}"
         logger.debug(f"Authorise client URL: {authorise_url}")
         auth_response = session.get(authorise_url)
         if "The request token has already been redeemed" in auth_response.text:
             logger.info("Request token has already been redeemed. Using cached access token.")
-            self.delete_key("request", host)
+            self.delete_key("request", host, database)
             return self.fetch_access_key(host, database)
         auth_soup = BeautifulSoup(auth_response.text, "html.parser")
         auth_form = auth_soup.find("form", action=re.compile(r"authorizeClient"))
+        if self.__is_login_form(auth_form):
+            if self.__ensure_database_registration(host, session, database_name):
+                auth_response = session.get(authorise_url)
+                auth_soup = BeautifulSoup(auth_response.text, "html.parser")
+                auth_form = auth_soup.find("form", action=re.compile(r"authorizeClient"))
         if not auth_form:
             logger.error("Could not find authorisation form")
             logger.debug(f"Response content: {auth_response.text}")
             raise Exception(f"Failed to find authorisation form for {host}")
+        if self.__is_login_form(auth_form):
+            raise Exception(
+                f"Failed to access authorisation form for {host}; "
+                f"account may not be registered for {database_name}"
+            )
 
         auth_data = {
             hidden_field["name"]: hidden_field["value"]
@@ -236,7 +271,7 @@ class KeyCache:
                 logger.debug(f"Access Token Secret: {secret}")
                 return token, secret
             elif r.status_code == 301:
-                self.delete_key("request", host)
+                self.delete_key("request", host, database)
                 return self.fetch_access_key(host, database)
             else:
                 logger.error(f"Failed to get access token: {r.json()['message']}")
@@ -316,6 +351,76 @@ class KeyCache:
         if host not in self.__host_config:
             raise KeyError(f"Host {host} not found in host configuration")
         return self.__host_config[host]["REST_URL"]
+
+    @staticmethod
+    def __is_login_form(form) -> bool:
+        return (
+            form is not None
+            and form.find("input", {"name": "user"}) is not None
+            and form.find("input", {"name": "password_field"}) is not None
+        )
+
+    @staticmethod
+    def __fieldset_contains(legend, database_name: str) -> bool:
+        if legend is None or legend.parent is None:
+            return False
+        return database_name in legend.parent.get_text(" ", strip=True)
+
+    def __ensure_database_registration(
+        self, host: str, session: requests.Session, database_name: str
+    ) -> bool:
+        account_url = f"{self.__host_config[host]['WEB_URL']}?page=account"
+        response = session.get(account_url)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        registered_legend = soup.find("legend", string=re.compile(r"^Registered$"))
+        if self.__fieldset_contains(registered_legend, database_name):
+            return True
+
+        auto_reg_form = soup.find("form", action=re.compile(r"page=account"))
+        auto_reg_select = (
+            auto_reg_form.find("select", {"name": "auto_reg"})
+            if auto_reg_form is not None
+            else None
+        )
+        if auto_reg_select is None:
+            logger.warning(
+                f"Unable to find auto-registration form for {host} - {database_name}"
+            )
+            return False
+
+        allowed_registrations = {
+            option.get("value", "")
+            for option in auto_reg_select.find_all("option")
+        }
+        if database_name not in allowed_registrations:
+            logger.warning(
+                f"Account cannot auto-register for {host} - {database_name}"
+            )
+            return False
+
+        logger.info(f"Registering account for {host} - {database_name}...")
+        register_data = {
+            hidden_field["name"]: hidden_field.get("value", "")
+            for hidden_field in auto_reg_form.find_all("input", type="hidden")
+            if hidden_field.get("name")
+        }
+        register_data.update({"auto_reg": database_name, "register": "Register"})
+        register_response = session.post(
+            self.__host_config[host]["AUTH_BASE"] + auto_reg_form["action"],
+            data=register_data,
+            allow_redirects=True,
+        )
+        register_soup = BeautifulSoup(register_response.text, "html.parser")
+        registered_legend = register_soup.find(
+            "legend", string=re.compile(r"^Registered$")
+        )
+        registered = self.__fieldset_contains(registered_legend, database_name)
+        if not registered:
+            logger.warning(
+                f"Account registration did not complete for {host} - {database_name}"
+            )
+        return registered
 
 
 def create_oauth_service(
