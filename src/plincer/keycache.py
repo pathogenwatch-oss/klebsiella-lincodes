@@ -400,7 +400,7 @@ class KeyCache:
 
     @staticmethod
     def __hidden_inputs(form: Tag) -> dict[str, str]:
-        """Return hidden form fields with normalized string names and values."""
+        """Return hidden form fields with normalised string names and values."""
         hidden_data: dict[str, str] = {}
         for field in form.find_all("input", type="hidden"):
             if not isinstance(field, Tag):
