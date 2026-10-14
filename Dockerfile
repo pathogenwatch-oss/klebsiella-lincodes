@@ -8,8 +8,6 @@ RUN uv build --wheel && mkdir /build && mv LICENSE README.md scheme.toml host_co
 
 FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim AS prod
 
-ARG VERSION
-ENV VERSION=${VERSION}
 ARG LOG=DEBUG
 ENV LOG=${LOG}
 ARG BUILD_DATE
@@ -22,7 +20,7 @@ WORKDIR /plincer
 RUN uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt
 
 RUN uv pip install --system --requirement requirements.txt \
-    && uv pip install --system --no-deps plincer-"${VERSION}"-py3-none-any.whl
+    && uv pip install --system --no-deps ./*.whl
 
 RUN --mount=type=secret,id=secrets \
     --mount=type=cache,target=/cache \

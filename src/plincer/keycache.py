@@ -1,15 +1,23 @@
 import dataclasses
-import hashlib
 import json
 import logging
 import re
 from pathlib import Path
+from typing import TypedDict, cast
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from rauth import OAuth1Service, OAuth1Session
 
 logger = logging.getLogger(__name__)
+
+
+class HostConfig(TypedDict):
+    REST_URL: str
+    WEB_URL: str
+    LOGIN_DB: dict[str, str]
 
 
 @dataclasses.dataclass
@@ -18,21 +26,28 @@ class KeyCache:
     host_config_file: Path
     cache_file: Path
 
+    __secrets: dict[str, dict[str, dict[str, str]]] = dataclasses.field(
+        init=False, repr=False
+    )
+    __host_config: dict[str, HostConfig] = dataclasses.field(init=False, repr=False)
+    __cache: dict[str, dict[str, dict[str, str]]] = dataclasses.field(
+        init=False, repr=False
+    )
     __logged_in_session: dict[str, requests.Session] = dataclasses.field(
-        default_factory=dict
+        default_factory=dict, repr=False
     )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.__secrets: dict[str, dict[str, dict[str, str]]] = self.load_secrets()
-        self.__host_config: dict[str, dict[str, str | dict[str, str]]] = self.load_config(self.host_config_file)
+        self.__host_config = self.load_config(self.host_config_file)
         self.__cache: dict[str, dict[str, dict[str, str]]] = self.load_cache()
         self.__initialize_cache_from_secrets()
 
     @staticmethod
     def __is_bigsdb(host: str) -> bool:
-        return host in ["pubmlst", "pasteur"]
+        return host in {"pubmlst", "pasteur"}
 
-    def __initialize_cache_from_secrets(self):
+    def __initialize_cache_from_secrets(self) -> None:
         for host, host_data in self.__secrets.items():
             if host not in self.__cache:
                 self.__cache[host] = {}
@@ -68,12 +83,18 @@ class KeyCache:
             return None
         if key_type in ["user", "consumer"]:
             if host not in self.__secrets or key_type not in self.__secrets[host]:
-                raise KeyError(f"{key_type.capitalize()} for {host} not found in secrets file")
-            return self.__secrets[host][key_type]["TOKEN"], self.__secrets[host][key_type]["TOKEN SECRET"]
+                raise KeyError(
+                    f"{key_type.capitalize()} for {host} not found in secrets file"
+                )
+            return self.__secrets[host][key_type]["TOKEN"], self.__secrets[host][
+                key_type
+            ]["TOKEN SECRET"]
         else:
             cache_key = self.__cache_key(key_type, database)
             if host in self.__cache and cache_key in self.__cache[host]:
-                return self.__cache[host][cache_key]["TOKEN"], self.__cache[host][cache_key]["TOKEN SECRET"]
+                return self.__cache[host][cache_key]["TOKEN"], self.__cache[host][
+                    cache_key
+                ]["TOKEN SECRET"]
             return None
 
     def set_key(
@@ -93,9 +114,7 @@ class KeyCache:
         self.__cache[host][cache_key] = {"TOKEN": token, "TOKEN SECRET": token_secret}
         self.save_cache()
 
-    def delete_key(
-        self, key_type: str, host: str, database: str | None = None
-    ) -> None:
+    def delete_key(self, key_type: str, host: str, database: str | None = None) -> None:
         if key_type in ["user", "consumer"]:
             logger.warning(f"Attempt to delete {key_type} token for {host} ignored.")
             return
@@ -106,10 +125,16 @@ class KeyCache:
                 self.save_cache()
 
     def get_user_credentials(self, host: str) -> tuple[str, str]:
-        return self.get_key("user", host)
+        key = self.get_key("user", host)
+        if key is None:
+            raise KeyError(f"User credentials for {host} not found in secrets file")
+        return key
 
     def get_consumer_key(self, host: str) -> tuple[str, str]:
-        return self.get_key("consumer", host)
+        key = self.get_key("consumer", host)
+        if key is None:
+            raise KeyError(f"Consumer key for {host} not found in secrets file")
+        return key
 
     def get_request_key(self, host: str, database: str) -> tuple[str, str] | None:
         key = self.get_key("request", host, database)
@@ -146,8 +171,6 @@ class KeyCache:
             if r.status_code == 200:
                 token = r.json()["oauth_token"]
                 secret = r.json()["oauth_token_secret"]
-                logger.debug(f"Request Token: {token}")
-                logger.debug(f"Request Token Secret: {secret}")
                 return token, secret
             elif r.status_code == 301:
                 logger.error(
@@ -157,10 +180,14 @@ class KeyCache:
                     f"Unable to get aa request token due to authentication failure ({host}), check your credentials and consumer key+secret"
                 )
             else:
-                logger.error(f"Failed to get request token: {r.json()['message']}")
+                logger.error(
+                    "Failed to get request token for %s (HTTP %s)",
+                    host,
+                    r.status_code,
+                )
                 raise Exception(f"Failed to get request token for {host}")
         except Exception as e:
-            logger.error(f"Error getting request token: {str(e)}")
+            logger.error("Error getting request token: %s", e)
             raise Exception(f"Error getting request token for {host}")
 
     def fetch_session_key(
@@ -168,6 +195,8 @@ class KeyCache:
     ) -> tuple[str, str]:
         logger.debug(f"Fetching session key for {host}...")
         access_key = self.get_access_key(host, database)
+        if access_key is None:
+            raise RuntimeError(f"Failed to obtain access key for {host} - {database}")
         consumer_key = self.get_consumer_key(host)
         session_request = OAuth1Session(
             consumer_key[0],
@@ -180,7 +209,7 @@ class KeyCache:
         if r.status_code == 200:
             session_token = r.json()["oauth_token"]
             session_secret = r.json()["oauth_token_secret"]
-        elif (r.status_code == 301 or r.status_code == 401) and retry:
+        elif r.status_code in {301, 401} and retry:
             print(
                 f"Session access denied. Attempting to regenerate keys as needed for {host}"
             )
@@ -200,61 +229,60 @@ class KeyCache:
         """Fetch an access key for the specified host and database. This will log in at the host as the user
         and get a verification code"""
         logger.debug(f"Fetching access key for {host}...")
-        request_key: tuple[str, str] = self.get_request_key(host, database)
+        request_key = self.get_request_key(host, database)
+        if request_key is None:
+            raise RuntimeError(f"Failed to obtain request key for {host} - {database}")
         consumer_key = self.get_consumer_key(host)
         database_name = f"pubmlst_{database}_seqdef"
 
         """Automatically authorize the application."""
         logger.info(f"Authorising application for {host} - {database}...")
         session = self.__get_bigsdb_session(host)
-        if not KeyCache.__logged_in(session, self.__host_config[host]['WEB_URL']):
+        if not KeyCache.__logged_in(session, self.__host_config[host]["WEB_URL"]):
             raise Exception(f"Failed to log in to {host}")
         authorise_url = f"{self.__host_config[host]['WEB_URL']}?db={database_name}&page=authorizeClient&oauth_token={request_key[0]}"
         logger.debug(f"Authorise client URL: {authorise_url}")
         auth_response = session.get(authorise_url)
         if "The request token has already been redeemed" in auth_response.text:
-            logger.info("Request token has already been redeemed. Using cached access token.")
+            logger.info(
+                "Request token has already been redeemed. Fetching a new token."
+            )
             self.delete_key("request", host, database)
             return self.fetch_access_key(host, database)
         auth_soup = BeautifulSoup(auth_response.text, "html.parser")
-        auth_form = auth_soup.find("form", action=re.compile(r"authorizeClient"))
-        if self.__is_login_form(auth_form):
-            if self.__ensure_database_registration(host, session, database_name):
-                auth_response = session.get(authorise_url)
-                auth_soup = BeautifulSoup(auth_response.text, "html.parser")
-                auth_form = auth_soup.find("form", action=re.compile(r"authorizeClient"))
-        if not auth_form:
-            logger.error("Could not find authorisation form")
-            logger.debug(f"Response content: {auth_response.text}")
-            raise Exception(f"Failed to find authorisation form for {host}")
-        if self.__is_login_form(auth_form):
-            raise Exception(
-                f"Failed to access authorisation form for {host}; "
-                f"account may not be registered for {database_name}"
-            )
+        auth_form = self.__find_authorisation_form(auth_soup)
 
-        auth_data = {
-            hidden_field["name"]: hidden_field["value"]
-            for hidden_field in auth_form.find_all("input", type="hidden")
-        }
+        # BIGSdb may return an account page here when the user has not yet
+        # registered for this database.  Registration is safe to attempt even
+        # if the page is a login form (for example, if the session expired).
+        if auth_form is None and self.__ensure_database_registration(
+            host, session, database_name
+        ):
+            auth_response = session.get(authorise_url)
+            auth_soup = BeautifulSoup(auth_response.text, "html.parser")
+            auth_form = self.__find_authorisation_form(auth_soup)
+        if auth_form is None:
+            logger.error("Could not find authorisation form")
+            raise Exception(f"Failed to find authorisation form for {host}")
+
+        auth_data = self.__hidden_inputs(auth_form)
         auth_data["submit"] = "Authorize"
 
-        verifier_url = self.__host_config[host]["AUTH_BASE"] + auth_form["action"]
+        verifier_url = urljoin(auth_response.url, auth_form.get("action", ""))
         logger.debug(f"Verifier URL: {verifier_url}")
-        final_response = session.post(verifier_url, data=auth_data, allow_redirects=True)
+        final_response = session.post(
+            verifier_url, data=auth_data, allow_redirects=True
+        )
 
         final_soup = BeautifulSoup(final_response.text, "html.parser")
         verifier_tag = final_soup.find("b", string=re.compile(r"Verification code:"))
-
-        if verifier_tag:
-            verifier = verifier_tag.string.split(":")[1].strip()
-            logger.debug(f"Extracted verifier: {verifier}")
-        else:
-            logger.error("Failed to obtain verifier code")
-            logger.debug(f"Final URL: {final_response.url}")
-            logger.debug(f"Response content: {final_response.text}")
+        verifier = ""
+        if isinstance(verifier_tag, Tag):
+            _, separator, verifier = verifier_tag.get_text(strip=True).partition(":")
+            verifier = verifier.strip() if separator else ""
+        if not verifier:
+            logger.error("Failed to obtain verifier code from %s", final_response.url)
             raise Exception(f"Failed to obtain verifier code for {host}")
-
 
         logger.info(f"Getting access token for {host} - {database}...")
         service = create_oauth_service(
@@ -267,68 +295,62 @@ class KeyCache:
             if r.status_code == 200:
                 token = r.json()["oauth_token"]
                 secret = r.json()["oauth_token_secret"]
-                logger.debug(f"Access Token: {token}")
-                logger.debug(f"Access Token Secret: {secret}")
                 return token, secret
             elif r.status_code == 301:
                 self.delete_key("request", host, database)
                 return self.fetch_access_key(host, database)
             else:
-                logger.error(f"Failed to get access token: {r.json()['message']}")
+                logger.error(
+                    "Failed to get access token for %s (HTTP %s)",
+                    host,
+                    r.status_code,
+                )
                 raise Exception(f"Failed to get access token for {host}")
         except Exception as e:
             logger.error(f"Error getting access token: {str(e)}")
             raise Exception(f"Error getting access token for {host}")
 
     @staticmethod
-    def load_config(host_config_file):
+    def load_config(host_config_file: Path) -> dict[str, HostConfig]:
         if not host_config_file or not Path(host_config_file).exists():
             raise FileNotFoundError(
                 f"Host configuration file not found: {host_config_file}"
             )
         with open(host_config_file, "r") as f:
-            return json.load(f)
+            return cast(dict[str, HostConfig], json.load(f))
 
     @staticmethod
-    def __logged_in(session: requests.session, url: str) -> bool:
+    def __logged_in(session: requests.Session, url: str) -> bool:
         """Check if the current session is logged in."""
         response = session.get(url)
         return "Log out" in response.text
 
-    def __get_bigsdb_session(self, host):
+    def __get_bigsdb_session(self, host: str) -> requests.Session:
         if host not in self.__logged_in_session or not KeyCache.__logged_in(
             self.__logged_in_session[host], self.__host_config[host]["WEB_URL"]
         ):
             self.__logged_in_session[host] = self.__login_to_bigsdb(host)
         return self.__logged_in_session[host]
 
-    def __login_to_bigsdb(self, host):
+    def __login_to_bigsdb(self, host: str) -> requests.Session:
         session = requests.Session()
         login_response = session.get(self.__host_config[host]["WEB_URL"])
         login_form = BeautifulSoup(login_response.text, "html.parser").find("form")
 
-        if not login_form:
-            logger.debug(f"{BeautifulSoup(login_response.text, 'html.parser')}")
+        if not isinstance(login_form, Tag):
             logger.error("Could not find login form")
             raise Exception(f"Failed to find login form for {host}")
 
-        login_data = {
-            hidden_field["name"]: hidden_field["value"]
-            for hidden_field in login_form.find_all("input", type="hidden")
-        }
+        login_data = self.__hidden_inputs(login_form)
 
         user_credentials = self.get_user_credentials(host)
-        hashed_password = hashlib.md5(
-            (
-                user_credentials[1].strip()
-                + user_credentials[0].strip()
-            ).encode()
-        ).hexdigest()
 
         login_data.update(
             {
                 "user": user_credentials[0].strip(),
-                "password": hashed_password,
+                # BIGSdb expects the raw password in this field over HTTPS.  The
+                # server derives and verifies its own password hash.
+                "password_field": user_credentials[1].strip(),
                 "submit": "Log in",
                 "page": "user",
             }
@@ -336,7 +358,9 @@ class KeyCache:
         )
 
         login_response = session.post(
-            self.__host_config[host]["WEB_URL"], data=login_data, allow_redirects=True
+            urljoin(login_response.url, login_form.get("action", "")),
+            data=login_data,
+            allow_redirects=True,
         )
 
         if "Invalid username or password" in login_response.text:
@@ -346,22 +370,56 @@ class KeyCache:
         logger.debug("Login successful")
         return session
 
-    def get_rest_url(self, host):
+    def get_rest_url(self, host: str) -> str:
         """Return the REST URL base for the specified host."""
         if host not in self.__host_config:
             raise KeyError(f"Host {host} not found in host configuration")
         return self.__host_config[host]["REST_URL"]
 
     @staticmethod
-    def __is_login_form(form) -> bool:
-        return (
-            form is not None
-            and form.find("input", {"name": "user"}) is not None
-            and form.find("input", {"name": "password_field"}) is not None
-        )
+    def __find_authorisation_form(soup: BeautifulSoup) -> Tag | None:
+        """Return the BIGSdb OAuth approval form from an authorisation page.
+
+        Recent BIGSdb versions use the default CGI form action rather than an
+        action containing ``authorizeClient``.  The OAuth hidden fields are a
+        stable and unambiguous way to identify the form.
+        """
+        required_fields = {"db", "page", "oauth_token", "authorize"}
+        for form in soup.find_all("form"):
+            if not isinstance(form, Tag):
+                continue
+            fields = {
+                name
+                for field in form.find_all("input")
+                if isinstance(field, Tag)
+                if isinstance((name := field.get("name")), str)
+            }
+            if required_fields.issubset(fields):
+                return form
+        return None
 
     @staticmethod
-    def __fieldset_contains(legend, database_name: str) -> bool:
+    def __hidden_inputs(form: Tag) -> dict[str, str]:
+        """Return hidden form fields with normalized string names and values."""
+        hidden_data: dict[str, str] = {}
+        for field in form.find_all("input", type="hidden"):
+            if not isinstance(field, Tag):
+                continue
+            name = field.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+
+            value = field.get("value", "")
+            if isinstance(value, str):
+                hidden_data[name] = value
+            elif isinstance(value, (list, tuple)):
+                hidden_data[name] = " ".join(str(part) for part in value)
+            else:
+                hidden_data[name] = ""
+        return hidden_data
+
+    @staticmethod
+    def __fieldset_contains(legend: Tag | None, database_name: str) -> bool:
         if legend is None or legend.parent is None:
             return False
         return database_name in legend.parent.get_text(" ", strip=True)
@@ -374,40 +432,51 @@ class KeyCache:
         soup = BeautifulSoup(response.text, "html.parser")
 
         registered_legend = soup.find("legend", string=re.compile(r"^Registered$"))
-        if self.__fieldset_contains(registered_legend, database_name):
+        if isinstance(registered_legend, Tag) and self.__fieldset_contains(
+            registered_legend, database_name
+        ):
             return True
 
-        auto_reg_form = soup.find("form", action=re.compile(r"page=account"))
+        auto_reg_form = next(
+            (
+                form
+                for form in soup.find_all("form")
+                if isinstance(form, Tag)
+                and form.find("select", {"name": "auto_reg"}) is not None
+            ),
+            None,
+        )
         auto_reg_select = (
             auto_reg_form.find("select", {"name": "auto_reg"})
-            if auto_reg_form is not None
+            if isinstance(auto_reg_form, Tag)
             else None
         )
-        if auto_reg_select is None:
+        if not isinstance(auto_reg_form, Tag) or not isinstance(auto_reg_select, Tag):
             logger.warning(
                 f"Unable to find auto-registration form for {host} - {database_name}"
             )
             return False
 
-        allowed_registrations = {
-            option.get("value", "")
-            for option in auto_reg_select.find_all("option")
-        }
+        allowed_registrations: set[str] = set()
+        for option in auto_reg_select.find_all("option"):
+            if not isinstance(option, Tag):
+                continue
+            value = option.get("value", "")
+            if isinstance(value, str):
+                allowed_registrations.add(value)
         if database_name not in allowed_registrations:
-            logger.warning(
-                f"Account cannot auto-register for {host} - {database_name}"
-            )
+            logger.warning(f"Account cannot auto-register for {host} - {database_name}")
             return False
 
         logger.info(f"Registering account for {host} - {database_name}...")
-        register_data = {
-            hidden_field["name"]: hidden_field.get("value", "")
-            for hidden_field in auto_reg_form.find_all("input", type="hidden")
-            if hidden_field.get("name")
-        }
+        register_data = self.__hidden_inputs(auto_reg_form)
         register_data.update({"auto_reg": database_name, "register": "Register"})
+        # Current BIGSdb account forms use the default CGI action.  Keep the
+        # requested page explicit when that action does not retain its query
+        # string.
+        register_data.setdefault("page", "account")
         register_response = session.post(
-            self.__host_config[host]["AUTH_BASE"] + auto_reg_form["action"],
+            urljoin(response.url, auto_reg_form.get("action", "")),
             data=register_data,
             allow_redirects=True,
         )
@@ -415,7 +484,9 @@ class KeyCache:
         registered_legend = register_soup.find(
             "legend", string=re.compile(r"^Registered$")
         )
-        registered = self.__fieldset_contains(registered_legend, database_name)
+        registered = isinstance(registered_legend, Tag) and self.__fieldset_contains(
+            registered_legend, database_name
+        )
         if not registered:
             logger.warning(
                 f"Account registration did not complete for {host} - {database_name}"

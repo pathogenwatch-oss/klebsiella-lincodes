@@ -12,7 +12,7 @@ import typer
 
 from plincer.allelestore import connect_db, lookup_st
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 @app.command()

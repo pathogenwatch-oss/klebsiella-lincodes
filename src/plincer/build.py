@@ -26,7 +26,7 @@ from plincer.keycache import KeyCache
 
 BAD_CHAR: re.Pattern = re.compile(r"[^ACGT]")
 
-app: typer.Typer = typer.Typer()
+app: typer.Typer = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 @app.command()

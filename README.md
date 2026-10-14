@@ -16,25 +16,27 @@ a file called `secrets.json`. The format is detailed [below](#secretsjson).
 
 #### Building
 
-Make a directory called `cache_dir` in the repository and then run the docker command below. This will pull a fresh copy
-of the database from the Pasteur. Note that the BUILD_DATE build argument is used to force Docker to rebuild the
-database if the date has changed. Any string could be used and a random string will force a full rebuild.
+Run `./build-pathogenwatch.sh`. It builds and pushes an image tagged with the version in `pyproject.toml` and the current
+date (for example, `v7.0.0-2026-10-14`). This will pull a fresh copy of the database from the Pasteur. The build date
+forces Docker to rebuild the database when the date changes; set `BUILD_DATE` to another value to force a rebuild.
+
+The wrapper pushes to `902121496535.dkr.ecr.eu-west-2.amazonaws.com/pathogenwatch-source/plincer`. Set `IMAGE` to
+override that destination, and `SECRETS_FILE`, `CACHE_DIR`, or `LOG` to override the corresponding defaults.
 
 ```
 %> docker build --progress plain \
                 --build-arg BUILD_DATE=$(date +%Y-%m-%d) \
-                --build-arg VERSION=5.0.2 \
                 --build-arg LOG=INFO \
                 --secret id=secrets,src="$PWD/secrets.json" \
                 --cache-from type=local,src=cache_dir \
                 --cache-to type=local,dest=cache_dir \
-                -t registry.gitlab.com/cgps/pathogenwatch/analyses/plincer:v5.0.2 .
+                -t plincer:latest .
 ```
 
 #### Running
 
 ```
-cat my_cgmlst.json | docker run --rm -i registry.gitlab.com/cgps/pathogenwatch/analyses/plincer:v5.0.2 > lincode.json
+cat my_cgmlst.json | docker run --rm -i plincer:latest > lincode.json
 ```
 
 ### uv
@@ -91,4 +93,3 @@ keys and update your `secrets.json` file.
 %> docker run --rm read_cache:latest
 {output as JSON}
 ```
-
